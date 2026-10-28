@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StrikeNet — Pentest Orchestrator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:        #090c10;
+  --s1:        #111520;
+  --s2:        #191e2d;
+  --s3:        #212840;
+  --border:    #252d42;
+  --border2:   #2f3a55;
+  --text:      #dde3f0;
+  --muted:     #5a6680;
+  --muted2:    #3d4a65;
+  --blue:      #4f8ef7;
+  --blue2:     #3a7aed;
+  --green:     #22c55e;
+  --red:       #ef4444;
+  --amber:     #f59e0b;
+  --purple:    #a78bfa;
+  --cyan:      #22d3ee;
+  --sidebar-w: 210px;
+  --radius:    7px;
+  --font:      'Inter', system-ui, sans-serif;
+  --mono:      'JetBrains Mono', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; overflow: hidden; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
+  background: var(--s1); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 100;
+}
+.logo { padding: 18px 16px 14px; border-bottom: 1px solid var(--border); }
+.logo-name { font-size: 15px; font-weight: 600; letter-spacing: .4px; color: var(--text); }
+.logo-sub { font-size: 10px; color: var(--muted); margin-top: 2px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; }
+.logo-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); margin-right: 6px; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+
+nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+.nav-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 16px; cursor: pointer; border-radius: 0;
+  color: var(--muted); transition: color .15s, background .15s;
+  border-left: 2px solid transparent; user-select: none;
+}
+.nav-item:hover { color: var(--text); background: var(--s2); }
+.nav-item.active { color: var(--blue); background: rgba(79,142,247,.08); border-left-color: var(--blue); }
+.nav-icon { font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; }
+.nav-label { flex: 1; font-size: 12.5px; font-weight: 450; }
+.badge {
+  font-size: 10px; font-family: var(--mono); font-weight: 500;
+  padding: 1px 6px; border-radius: 10px; background: var(--s3);
+  color: var(--muted); min-width: 18px; text-align: center;
+}
+.badge.live { background: rgba(239,68,68,.18); color: var(--red); }
+.badge.blue { background: rgba(79,142,247,.18); color: var(--blue); }
+
+.sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+.server-status { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+
+/* ── MAIN ── */
+.main { margin-left: var(--sidebar-w); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.topbar {
+  height: 46px; flex-shrink: 0; background: var(--s1);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 20px; gap: 12px;
+}
+.topbar-title { font-size: 13px; font-weight: 500; }
+.topbar-breadcrumb { color: var(--muted); font-size: 12px; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: var(--radius); border: none; cursor: pointer; font-family: var(--font); font-size: 12px; font-weight: 500; transition: .15s; }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover { background: var(--blue2); }
+.btn-ghost { background: var(--s3); color: var(--text); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--border); }
+.btn-danger { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+.btn-sm { padding: 3px 9px; font-size: 11px; }
+
+.content { flex: 1; overflow-y: auto; padding: 20px; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* ── CARDS / GRID ── */
+.stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
+.stat-card {
+  background: var(--s1); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px; }
+.stat-val { font-size: 26px; font-weight: 600; font-family: var(--mono); line-height: 1; }
+.stat-sub { font-size: 10px; color: var(--muted); margin-top: 4px; }
+.c-blue { color: var(--blue); } .c-green { color: var(--green); }
+.c-red { color: var(--red); } .c-amber { color: var(--amber); } .c-purple { color: var(--purple); }
+
+.card { background: var(--s1); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+.card-title { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 12px; }
+
+/* ── SEVERITY BAR ── */
+.sev-bar-wrap { margin-bottom: 16px; }
+.sev-bar { height: 8px; border-radius: 4px; overflow: hidden; display: flex; margin-bottom: 8px; }
+.sev-seg { height: 100%; transition: width .5s; }
+.sev-legend { display: flex; gap: 14px; flex-wrap: wrap; }
+.sev-item { display: flex; align-items: center; gap: 5px; font-size: 11px; font-family: var(--mono); }
+.sev-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+/* ── CHARTS ── */
+.charts-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 14px; }
+.chart-wrap { position: relative; height: 180px; }
+
+/* ── TABLES ── */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 8px 10px; font-size: 10.5px; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .6px; }
+td { padding: 8px 10px; border-bottom: 1px solid rgba(37,45,66,.6); font-size: 12px; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(25,30,45,.6); }
+.mono { font-family: var(--mono); font-size: 11.5px; }
+
+/* ── BADGES ── */
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 500; font-family: var(--mono); }
+.tag-critical { background: rgba(239,68,68,.18); color: #ff6b6b; }
+.tag-high { background: rgba(245,158,11,.18); color: var(--amber); }
+.tag-medium { background: rgba(79,142,247,.18); color: #7fb3ff; }
+.tag-low { background: rgba(100,116,128,.18); color: #8899aa; }
+.tag-info { background: rgba(90,102,128,.12); color: var(--muted); }
+.tag-done { background: rgba(34,197,94,.15); color: var(--green); }
+.tag-running { background: rgba(79,142,247,.15); color: var(--blue); }
+.tag-pending { background: rgba(90,102,128,.15); color: var(--muted); }
+.tag-failed { background: rgba(239,68,68,.15); color: var(--red); }
+.tag-paused { background: rgba(245,158,11,.15); color: var(--amber); }
+
+.tool-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-family: var(--mono); background: var(--s3); color: var(--muted); margin: 1px; }
+
+/* ── PROGRESS BAR ── */
+.progress-bar { height: 4px; background: var(--s3); border-radius: 2px; overflow: hidden; min-width: 80px; }
+.progress-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width .4s; }
+.progress-fill.done { background: var(--green); }
+.progress-fill.failed { background: var(--red); }
+
+/* ── FORMS ── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .6px; }
+.form-input, .form-select, .form-textarea {
+  width: 100%; padding: 8px 10px; background: var(--s2);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); font-family: var(--font); font-size: 12.5px;
+  transition: border-color .15s; outline: none;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--blue); }
+.form-textarea { resize: vertical; min-height: 90px; font-family: var(--mono); font-size: 12px; }
+.form-select option { background: var(--s2); }
+
+/* ── TOGGLE ── */
+.toggle-row { display: flex; align-items: flex-start; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--s2); margin-bottom: 8px; gap: 12px; }
+.toggle-info { flex: 1; }
+.toggle-name { font-size: 12.5px; font-weight: 500; margin-bottom: 2px; }
+.toggle-desc { font-size: 11px; color: var(--muted); }
+.switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; margin-top: 2px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-slider { position: absolute; inset: 0; background: var(--s3); border-radius: 10px; cursor: pointer; transition: .2s; }
+.switch-slider:before { content:''; position:absolute; height:14px; width:14px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+.switch input:checked + .switch-slider { background: var(--blue); }
+.switch input:checked + .switch-slider:before { transform: translateX(16px); }
+
+/* ── LOG TERMINAL ── */
+.terminal {
+  background: #060810; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; font-family: var(--mono); font-size: 11.5px;
+  height: calc(100vh - 200px); overflow-y: auto; position: relative;
+}
+.log-line { padding: 1px 0; line-height: 1.55; display: flex; gap: 8px; }
+.log-time { color: var(--muted2); flex-shrink: 0; }
+.log-tool { padding: 0 5px; border-radius: 3px; font-size: 10px; flex-shrink: 0; }
+.log-info .log-tool { background: rgba(79,142,247,.2); color: var(--blue); }
+.log-warn .log-tool { background: rgba(245,158,11,.2); color: var(--amber); }
+.log-error .log-tool { background: rgba(239,68,68,.2); color: var(--red); }
+.log-ok .log-tool { background: rgba(34,197,94,.2); color: var(--green); }
+.log-msg { flex: 1; }
+.log-info .log-msg { color: #c8d4e8; }
+.log-warn .log-msg { color: #f5cb80; }
+.log-error .log-msg { color: #ff8080; }
+.log-ok .log-msg { color: #6ee79a; }
+.terminal-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+
+/* ── TOOLS STATUS ── */
+.tools-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.tool-card { background: var(--s1); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.tool-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.tool-name { font-size: 14px; font-weight: 600; }
+.tool-status { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+.st-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.st-online { background: var(--green); }
+.st-offline { background: var(--red); }
+.st-warn { background: var(--amber); }
+.tool-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+.meta-item { background: var(--s2); border-radius: 5px; padding: 7px 10px; }
+.meta-key { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
+.meta-val { font-size: 12px; font-family: var(--mono); color: var(--text); }
+
+/* ── SETTINGS TABS ── */
+.tab-nav { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab-btn { padding: 8px 16px; border: none; background: none; cursor: pointer; font-family: var(--font); font-size: 12.5px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: .15s; }
+.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── FILTERS ── */
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+.filter-chip { padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); background: none; color: var(--muted); cursor: pointer; font-size: 11.5px; font-family: var(--font); transition: .15s; }
+.filter-chip.active { border-color: var(--blue); color: var(--blue); background: rgba(79,142,247,.1); }
+.filter-chip:hover { border-color: var(--border2); color: var(--text); }
+
+/* ── STEPPER ── */
+.stepper { display: flex; align-items: center; gap: 0; }
+.step { display: flex; flex-direction: column; align-items: center; position: relative; }
+.step-circle { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-family: var(--mono); border: 2px solid var(--border); background: var(--s2); color: var(--muted); }
+.step.done .step-circle { background: rgba(34,197,94,.15); border-color: var(--green); color: var(--green); }
+.step.active .step-circle { background: rgba(79,142,247,.15); border-color: var(--blue); color: var(--blue); }
+.step.failed .step-circle { background: rgba(239,68,68,.15); border-color: var(--red); color: var(--red); }
+.step-label { font-size: 10px; color: var(--muted); margin-top: 4px; white-space: nowrap; }
+.step-line { height: 2px; flex: 1; background: var(--border); min-width: 24px; }
+.step-line.done { background: var(--green); }
+
+/* ── TOAST ── */
+#toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { padding: 10px 14px; border-radius: var(--radius); background: var(--s2); border: 1px solid var(--border); font-size: 12px; max-width: 300px; pointer-events: all; animation: slideIn .25s ease; }
+.toast-crit { border-left: 3px solid var(--red); }
+.toast-ok { border-left: 3px solid var(--green); }
+@keyframes slideIn { from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)} }
+
+/* ── MODAL ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 500; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--s1); border: 1px solid var(--border); border-radius: 10px; padding: 20px; width: 480px; max-width: 95vw; }
+.modal-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* ── FILE DROP ── */
+.file-drop { border: 2px dashed var(--border); border-radius: var(--radius); padding: 20px; text-align: center; cursor: pointer; transition: .2s; color: var(--muted); font-size: 12px; }
+.file-drop:hover, .file-drop.over { border-color: var(--blue); color: var(--blue); background: rgba(79,142,247,.04); }
+.file-drop-icon { font-size: 24px; margin-bottom: 6px; }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+
+/* ── PULSING DOT ── */
+.pulse-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); animation: pulse 1.5s infinite; }
+
+/* ── EMPTY STATE ── */
+.empty-state { padding: 48px 20px; text-align: center; color: var(--muted); }
+.empty-icon { font-size: 36px; margin-bottom: 10px; opacity: .4; }
+.empty-text { font-size: 12px; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-name"><span class="logo-dot"></span>StrikeNet</div>
+    <div class="logo-sub">Pentest Orchestrator</div>
+  </div>
+  <nav id="nav">
+    <div class="nav-item active" data-section="dashboard">
+      <span class="nav-icon">⬡</span><span class="nav-label">Дашборд</span>
+    </div>
+    <div class="nav-item" data-section="newscan">
+      <span class="nav-icon">+</span><span class="nav-label">Новый скан</span>
+    </div>
+    <div class="nav-item" data-section="tasks">
+      <span class="nav-icon">◈</span><span class="nav-label">Задачи</span>
+      <span class="badge live" id="badge-tasks">1</span>
+    </div>
+    <div class="nav-item" data-section="scheduler">
+      <span class="nav-icon">◷</span><span class="nav-label">Планировщик</span>
+      <span class="badge" id="badge-sched">2</span>
+    </div>
+    <div class="nav-item" data-section="findings">
+      <span class="nav-icon">◎</span><span class="nav-label">Находки</span>
+      <span class="badge blue" id="badge-findings">20</span>
+    </div>
+    <div class="nav-item" data-section="reports">
+      <span class="nav-icon">▤</span><span class="nav-label">Отчёты</span>
+    </div>
+    <div class="nav-item" data-section="livelog">
+      <span class="nav-icon">▶</span><span class="nav-label">Живой лог</span>
+    </div>
+    <div class="nav-item" data-section="tools">
+      <span class="nav-icon">◧</span><span class="nav-label">Инструменты</span>
+    </div>
+    <div class="nav-item" data-section="settings">
+      <span class="nav-icon">⚙</span><span class="nav-label">Настройки</span>
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="server-status"><span class="status-dot"></span>API на связи · v0.9.1</div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+  <div class="topbar">
+    <span class="topbar-title" id="topbar-title">Дашборд</span>
+    <div class="topbar-right">
+      <span id="clock" class="mono" style="font-size:11px;color:var(--muted)"></span>
+      <button class="btn btn-primary btn-sm" onclick="nav('newscan')">+ Новый скан</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ════ DASHBOARD ════ -->
+    <section class="section active" id="s-dashboard">
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">Задач всего</div><div class="stat-val" id="st-total">7</div><div class="stat-sub">за всё время</div></div>
+        <div class="stat-card"><div class="stat-label">Активно</div><div class="stat-val c-blue" id="st-active">1</div><div class="stat-sub"><span class="pulse-dot"></span> сейчас</div></div>
+        <div class="stat-card"><div class="stat-label">На паузе</div><div class="stat-val c-amber" id="st-paused">0</div></div>
+        <div class="stat-card"><div class="stat-label">Завершено</div><div class="stat-val c-green" id="st-done">6</div></div>
+        <div class="stat-card"><div class="stat-label">Находок</div><div class="stat-val c-red" id="st-findings">20</div><div class="stat-sub">крит+выс: <span id="st-hi">2</span></div></div>
+      </div>
+
+      <div class="card sev-bar-wrap">
+        <div class="card-title">Находки по критичности</div>
+        <div class="sev-bar" id="sev-bar">
+          <div class="sev-seg" style="width:5%;background:var(--red)"></div>
+          <div class="sev-seg" style="width:10%;background:var(--amber)"></div>
+          <div class="sev-seg" style="width:10%;background:var(--blue)"></div>
+          <div class="sev-seg" style="width:10%;background:var(--muted)"></div>
+          <div class="sev-seg" style="width:65%;background:var(--s3)"></div>
+        </div>
+        <div class="sev-legend">
+          <div class="sev-item"><span class="sev-dot" style="background:var(--red)"></span>critical: <b id="cnt-crit">1</b></div>
+          <div class="sev-item"><span class="sev-dot" style="background:var(--amber)"></span>high: <b id="cnt-high">2</b></div>
+          <div class="sev-item"><span class="sev-dot" style="background:var(--blue)"></span>medium: <b id="cnt-med">4</b></div>
+          <div class="sev-item"><span class="sev-dot" style="background:var(--muted)"></span>low: <b id="cnt-low">6</b></div>
+          <div class="sev-item"><span class="sev-dot" style="background:var(--s3)"></span>info: <b id="cnt-info">7</b></div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="card"><div class="card-title">Тренд находок (14 дней)</div><div class="chart-wrap"><canvas id="trendChart"></canvas></div></div>
+        <div class="card"><div class="card-title">По инструментам</div><div class="chart-wrap"><canvas id="toolChart"></canvas></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Активные задачи</div>
+        <table id="active-runs-table">
+          <thead><tr><th>ID</th><th>Цель</th><th>Этапы</th><th>Прогресс</th><th>Статус</th><th>Старт</th><th>Действия</th></tr></thead>
+          <tbody id="active-runs-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════ NEW SCAN ════ -->
+    <section class="section" id="s-newscan">
+      <div class="form-grid">
+        <div>
+          <div class="card">
+            <div class="card-title">Цели</div>
+            <div class="form-group">
+              <label class="form-label">URL цели (по одному на строку)</label>
+              <textarea class="form-textarea" id="targets-input" placeholder="https://staging.example.com&#10;https://api.example.com" style="min-height:120px"></textarea>
+            </div>
+            <div class="file-drop" id="file-drop" onclick="document.getElementById('file-input').click()">
+              <div class="file-drop-icon">⬆</div>
+              <div>Загрузить из .txt или .csv</div>
+              <div style="font-size:10px;margin-top:4px;color:var(--muted2)">один URL на строку</div>
+            </div>
+            <input type="file" id="file-input" accept=".txt,.csv" style="display:none" onchange="loadTargetFile(this)">
+            <div id="targets-preview" style="margin-top:10px"></div>
+            <div class="form-group" style="margin-top:12px">
+              <label class="form-label">Путь к репозиторию <span style="color:var(--muted2)">(для DeepAudit / Shannon)</span></label>
+              <input class="form-input" id="repo-path" placeholder="/opt/myapp">
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="card-title">Инструменты пайплайна</div>
+            <div id="tool-toggles">
+              <div class="toggle-row">
+                <div class="toggle-info"><div class="toggle-name">DeepAudit</div><div class="toggle-desc">SAST — анализ исходного кода, без живой цели</div></div>
+                <label class="switch"><input type="checkbox" checked id="t-deepaudit"><span class="switch-slider"></span></label>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info"><div class="toggle-name">HexStrike</div><div class="toggle-desc">Широкий recon, сетевое сканирование</div></div>
+                <label class="switch"><input type="checkbox" checked id="t-hexstrike"><span class="switch-slider"></span></label>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info"><div class="toggle-name">Strix</div><div class="toggle-desc">Мультиагентная эксплуатация + PoC</div></div>
+                <label class="switch"><input type="checkbox" checked id="t-strix"><span class="switch-slider"></span></label>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info"><div class="toggle-name">Shannon</div><div class="toggle-desc">Финальная валидация, SARIF-отчёт</div></div>
+                <label class="switch"><input type="checkbox" checked id="t-shannon"><span class="switch-slider"></span></label>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <div class="card-title">LLM-провайдер</div>
+            <div class="form-group">
+              <label class="form-label">Провайдер</label>
+              <select class="form-select" id="llm-provider">
+                <option>OpenRouter</option><option>Ollama (локальный)</option><option>OpenAI</option><option>Custom endpoint</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Модель</label>
+              <select class="form-select"><option>z-ai/glm-5.3</option><option>deepseek/deepseek-r1</option><option>meta-llama/llama-3.3-70b-instruct:free</option></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">API-ключ</label>
+              <div style="position:relative">
+                <input class="form-input" type="password" id="api-key" placeholder="sk-or-..." style="padding-right:36px">
+                <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted)" onclick="toggleKey()">👁</span>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <div class="card-title">Изоляция</div>
+            <div class="toggle-row">
+              <div class="toggle-info"><div class="toggle-name">nono-обёртка</div><div class="toggle-desc">Ограничить доступ к ФС и сети для каждого инструмента</div></div>
+              <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+            </div>
+            <div class="toggle-row" style="margin-top:6px">
+              <div class="toggle-info"><div class="toggle-name">Сброс состояния цели</div><div class="toggle-desc">Между мутирующими этапами (Strix, Shannon)</div></div>
+              <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-primary" style="flex:1" onclick="startScan()">▶ Запустить</button>
+            <button class="btn btn-ghost">Сохранить шаблон</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ TASKS ════ -->
+    <section class="section" id="s-tasks">
+      <div class="filter-bar">
+        <span style="font-size:11px;color:var(--muted);margin-right:4px">Статус:</span>
+        <button class="filter-chip active" onclick="filterTasks(this,'all')">Все</button>
+        <button class="filter-chip" onclick="filterTasks(this,'running')">Активные</button>
+        <button class="filter-chip" onclick="filterTasks(this,'done')">Завершённые</button>
+        <button class="filter-chip" onclick="filterTasks(this,'failed')">Ошибки</button>
+        <input class="form-input" style="width:200px;margin-left:auto" placeholder="🔍 Поиск по цели...">
+      </div>
+      <div class="card" style="padding:0">
+        <table>
+          <thead><tr><th>ID</th><th>Цель</th><th>Инструменты</th><th>Статус</th><th>Прогресс</th><th>Находок</th><th>Начат</th><th>Действия</th></tr></thead>
+          <tbody id="tasks-body"></tbody>
+        </table>
+      </div>
+
+      <!-- detail stepper -->
+      <div class="card" id="task-detail" style="display:none;margin-top:12px">
+        <div class="card-title" id="task-detail-title">Задача #0 — этапы</div>
+        <div class="stepper" id="task-stepper" style="margin:12px 0 16px"></div>
+        <table><thead><tr><th>Тип</th><th>Endpoint</th><th>Severity</th><th>Источник</th></tr></thead>
+        <tbody id="task-findings"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ════ SCHEDULER ════ -->
+    <section class="section" id="s-scheduler">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="card-title" style="margin:0">Расписания</div>
+        <button class="btn btn-primary btn-sm" onclick="openModal('modal-sched')">+ Добавить</button>
+      </div>
+      <div class="card" style="padding:0">
+        <table>
+          <thead><tr><th>ID</th><th>Цель</th><th>Инструменты</th><th>Расписание</th><th>Следующий запуск</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="sched-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════ FINDINGS ════ -->
+    <section class="section" id="s-findings">
+      <div class="filter-bar">
+        <button class="filter-chip active" onclick="filterFind(this,'all')">Все</button>
+        <button class="filter-chip" onclick="filterFind(this,'critical')" style="border-color:rgba(239,68,68,.3);color:var(--red)">Critical</button>
+        <button class="filter-chip" onclick="filterFind(this,'high')" style="border-color:rgba(245,158,11,.3);color:var(--amber)">High</button>
+        <button class="filter-chip" onclick="filterFind(this,'medium')">Medium</button>
+        <button class="filter-chip" onclick="filterFind(this,'low')">Low</button>
+        <button class="filter-chip" onclick="filterFind(this,'info')">Info</button>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <select class="form-select" style="width:130px;padding:4px 8px"><option>Все инструменты</option><option>DeepAudit</option><option>HexStrike</option><option>Strix</option><option>Shannon</option></select>
+          <button class="btn btn-ghost btn-sm" onclick="exportFindings()">⬇ Экспорт</button>
+        </div>
+      </div>
+      <div class="card" style="padding:0">
+        <table>
+          <thead><tr><th>Severity</th><th>Тип</th><th>Endpoint / файл</th><th>Параметр</th><th>Подтверждено</th><th>PoC</th><th>Задача</th></tr></thead>
+          <tbody id="findings-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════ REPORTS ════ -->
+    <section class="section" id="s-reports">
+      <div class="card">
+        <div class="card-title">Сформировать отчёт</div>
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <div class="form-group" style="flex:1;margin:0"><label class="form-label">Задача</label><select class="form-select"><option>Задача #7 — staging.example.com</option><option>Задача #6 — api.example.com</option></select></div>
+          <div class="form-group" style="flex:1;margin:0"><label class="form-label">Формат</label><select class="form-select"><option>PDF</option><option>SARIF 2.1.0</option><option>JSON</option><option>CSV</option></select></div>
+          <div class="form-group" style="flex:1;margin:0"><label class="form-label">Детализация</label><select class="form-select"><option>Полный</option><option>Технический</option><option>Executive summary</option></select></div>
+          <button class="btn btn-primary">Сформировать</button>
+        </div>
+      </div>
+      <div class="card" style="padding:0;margin-top:12px">
+        <table>
+          <thead><tr><th>Задача</th><th>Формат</th><th>Дата</th><th>Размер</th><th>Действия</th></tr></thead>
+          <tbody id="reports-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════ LIVE LOG ════ -->
+    <section class="section" id="s-livelog">
+      <div class="terminal-toolbar">
+        <select class="form-select" style="width:260px;padding:5px 8px" id="log-run-select">
+          <option value="7">Задача #7 — staging.example.com (активна)</option>
+          <option value="6">Задача #6 — api.example.com (завершена)</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="btn-pause-log" onclick="toggleLogPause()">⏸ Пауза</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearLog()">✕ Очистить</button>
+        <button class="btn btn-ghost btn-sm" onclick="downloadLog()">⬇ Скачать</button>
+        <input class="form-input" style="width:180px;padding:4px 8px" placeholder="🔍 Поиск в логе..." oninput="searchLog(this.value)">
+        <span style="margin-left:auto;font-size:11px;color:var(--muted);font-family:var(--mono)" id="log-counter">0 строк</span>
+      </div>
+      <div class="terminal" id="terminal"></div>
+    </section>
+
+    <!-- ════ TOOLS ════ -->
+    <section class="section" id="s-tools">
+      <div class="tools-grid" id="tools-grid"></div>
+    </section>
+
+    <!-- ════ SETTINGS ════ -->
+    <section class="section" id="s-settings">
+      <div class="tab-nav">
+        <button class="tab-btn active" onclick="openTab(this,'tab-general')">Общие</button>
+        <button class="tab-btn" onclick="openTab(this,'tab-llm')">LLM-провайдеры</button>
+        <button class="tab-btn" onclick="openTab(this,'tab-nono')">nono</button>
+        <button class="tab-btn" onclick="openTab(this,'tab-notify')">Уведомления</button>
+        <button class="tab-btn" onclick="openTab(this,'tab-security')">Безопасность</button>
+      </div>
+
+      <div class="tab-panel active" id="tab-general">
+        <div class="card" style="max-width:540px">
+          <div class="form-group"><label class="form-label">Название инстанса</label><input class="form-input" value="StrikeNet Production"></div>
+          <div class="form-group"><label class="form-label">Часовой пояс</label><select class="form-select"><option>Europe/Bucharest</option><option>UTC</option><option>Europe/Moscow</option></select></div>
+          <div class="form-group"><label class="form-label">Путь к results_dir</label><input class="form-input" value="/opt/pentest-orchestrator/results"></div>
+          <div class="form-group"><label class="form-label">Скрипт сброса цели</label><input class="form-input" value="/opt/pentest-orchestrator/reset-target.sh"></div>
+          <div class="form-group"><label class="form-label">Хранить результаты (дней)</label><input class="form-input" type="number" value="90"></div>
+          <button class="btn btn-primary">Сохранить</button>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-llm">
+        <div class="card" style="max-width:580px">
+          <div id="llm-providers-list"></div>
+          <button class="btn btn-ghost" style="margin-top:8px" onclick="addLLMProvider()">+ Добавить провайдер</button>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-nono">
+        <div class="card" style="max-width:580px">
+          <div class="toggle-row" style="margin-bottom:14px">
+            <div class="toggle-info"><div class="toggle-name">Включить nono-изоляцию глобально</div><div class="toggle-desc">Оборачивает каждый этап своим профилем политики</div></div>
+            <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+          </div>
+          <div class="form-group"><label class="form-label">Редактировать профиль</label>
+            <select class="form-select" id="nono-profile-select" onchange="loadNonoProfile(this.value)" style="margin-bottom:8px">
+              <option>deepaudit</option><option>hexstrike</option><option>strix</option><option>shannon</option>
+            </select>
+            <textarea class="form-textarea" id="nono-editor" style="min-height:180px;font-family:var(--mono);font-size:11.5px">{\n  "filesystem": { "allow_read": ["${TARGET_REPO}"], "allow_write": ["${RESULTS_DIR}"] },\n  "network": { "allow": ["${LLM_PROVIDER_HOST}"], "deny_default": true }\n}</textarea>
+          </div>
+          <button class="btn btn-primary">Сохранить профиль</button>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-notify">
+        <div class="card" style="max-width:540px">
+          <div class="form-group"><label class="form-label">Telegram webhook URL</label><input class="form-input" placeholder="https://api.telegram.org/bot.../sendMessage"></div>
+          <div class="form-group"><label class="form-label">Slack webhook URL</label><input class="form-input" placeholder="https://hooks.slack.com/services/..."></div>
+          <div style="margin:12px 0 8px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">Уведомлять при:</div>
+          <div class="toggle-row"><div class="toggle-info"><div class="toggle-name">Critical-находка</div></div><label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><div class="toggle-name">Завершение задачи</div></div><label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><div class="toggle-name">Ошибка инструмента</div></div><label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label></div>
+          <button class="btn btn-primary" style="margin-top:12px">Сохранить</button>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-security">
+        <div class="card" style="max-width:420px">
+          <div class="form-group"><label class="form-label">Текущий пароль</label><input class="form-input" type="password"></div>
+          <div class="form-group"><label class="form-label">Новый пароль</label><input class="form-input" type="password"></div>
+          <div class="form-group"><label class="form-label">Повторите пароль</label><input class="form-input" type="password"></div>
+          <button class="btn btn-primary">Изменить пароль</button>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /content -->
+</main>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="modal-sched">
+  <div class="modal">
+    <div class="modal-title">Новое расписание</div>
+    <div class="form-group"><label class="form-label">URL цели</label><input class="form-input" placeholder="https://staging.example.com"></div>
+    <div class="form-group"><label class="form-label">Тип</label><select class="form-select"><option>Повторяющееся</option><option>Разово</option></select></div>
+    <div class="form-group"><label class="form-label">Cron-выражение</label><input class="form-input" value="0 2 * * 1" placeholder="0 2 * * 1"></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:-8px">Следующие запуски: каждый пн 02:00, 2026-11-03, 2026-11-10, 2026-11-17</div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-sched')">Отмена</button><button class="btn btn-primary" onclick="closeModal('modal-sched')">Сохранить</button></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+// ── DATA ──
+const RUNS = [
+  {id:7,target:'staging.example.com',tools:['deepaudit','hexstrike','strix','shannon'],status:'running',progress:55,findings:8,started:'27.10 04:12',stage:2},
+  {id:6,target:'api.internal.com',tools:['hexstrike','strix','shannon'],status:'done',progress:100,findings:7,started:'26.10 22:00',stage:3},
+  {id:5,target:'admin.example.com',tools:['deepaudit','shannon'],status:'done',progress:100,findings:3,started:'25.10 15:30',stage:3},
+  {id:4,target:'beta.example.com',tools:['hexstrike','strix'],status:'failed',progress:40,findings:2,started:'25.10 10:00',stage:1},
+  {id:3,target:'legacy.example.com',tools:['deepaudit','hexstrike','strix','shannon'],status:'done',progress:100,findings:0,started:'24.10 08:00',stage:3},
+];
+
+const FINDINGS = [
+  {sev:'critical',type:'SQLi Time-Based',endpoint:'/api/users',param:'id',tools:['strix','shannon'],poc:true,run:7},
+  {sev:'high',type:'XSS Reflected',endpoint:'/search',param:'q',tools:['hexstrike','strix'],poc:true,run:7},
+  {sev:'high',type:'SSRF',endpoint:'/api/fetch',param:'url',tools:['shannon'],poc:true,run:6},
+  {sev:'medium',type:'JWT None Algorithm',endpoint:'/auth/refresh',param:'token',tools:['deepaudit','strix'],poc:false,run:7},
+  {sev:'medium',type:'IDOR',endpoint:'/api/profile/{id}',param:'id',tools:['strix'],poc:true,run:6},
+  {sev:'medium',type:'Open Redirect',endpoint:'/redirect',param:'next',tools:['hexstrike'],poc:false,run:7},
+  {sev:'medium',type:'Command Injection',endpoint:'/admin/ping',param:'host',tools:['deepaudit','shannon'],poc:true,run:5},
+  {sev:'low',type:'Insecure Cookie',endpoint:'/',param:'session',tools:['hexstrike'],poc:false,run:6},
+  {sev:'low',type:'Missing HSTS',endpoint:'/',param:'-',tools:['hexstrike'],poc:false,run:7},
+  {sev:'low',type:'Verbose Error',endpoint:'/api/*',param:'-',tools:['strix'],poc:false,run:6},
+  {sev:'info',type:'Server Version Leak',endpoint:'/',param:'X-Powered-By',tools:['hexstrike'],poc:false,run:3},
+  {sev:'info',type:'Directory Listing',endpoint:'/static/',param:'-',tools:['hexstrike'],poc:false,run:6},
+];
+
+const SCHEDULES = [
+  {id:1,target:'staging.example.com',tools:['hexstrike','strix','shannon'],cron:'0 2 * * 1',next:'03.11 02:00',active:true},
+  {id:2,target:'api.internal.com',tools:['deepaudit','shannon'],cron:'0 3 1 * *',next:'01.11 03:00',active:true},
+];
+
+const REPORTS = [
+  {run:'#7 — staging.example.com',fmt:'PDF',date:'27.10 06:00',size:'1.2 МБ'},
+  {run:'#6 — api.internal.com',fmt:'SARIF 2.1.0',date:'27.10 00:15',size:'48 КБ'},
+  {run:'#5 — admin.example.com',fmt:'JSON',date:'25.10 20:00',size:'22 КБ'},
+];
+
+const TOOLS_STATUS = [
+  {name:'DeepAudit',status:'online',version:'1.4.2',last:'27.10 04:12',avg:'18 мин',image:'deepaudit:latest'},
+  {name:'HexStrike',status:'online',version:'6.0.1',last:'27.10 04:20',avg:'8 мин',image:'kalilinux/kali-rolling'},
+  {name:'Strix',status:'online',version:'3.1.0',last:'27.10 04:40',avg:'45 мин',image:'strix:isolated'},
+  {name:'Shannon',status:'warn',version:'2.8.0',last:'27.10 04:30',avg:'62 мин',image:'node:20-slim'},
+];
+
+const LOG_LINES = [
+  {t:'04:12:01',lvl:'info',tool:'ORCH','msg':'Запуск прогона #7 → staging.example.com'},
+  {t:'04:12:03',lvl:'info',tool:'DEEPAUDIT','msg':'Клонирование репозитория /opt/staging-src...'},
+  {t:'04:13:45',lvl:'ok',tool:'DEEPAUDIT','msg':'Найдено 3 потенциальных уязвимости в src/api/users.py'},
+  {t:'04:13:46',lvl:'info',tool:'DEEPAUDIT','msg':'PoC-скрипт для SQLi → sandbox/poc_001.py'},
+  {t:'04:14:10',lvl:'ok',tool:'DEEPAUDIT','msg':'[PoC ПОДТВЕРЖДЁН] SQLi time-based в /api/users?id='},
+  {t:'04:14:12',lvl:'info',tool:'ORCH','msg':'Этап 0 (DeepAudit) завершён. Находок: 1 PoC, 2 неподтверждённых'},
+  {t:'04:14:15',lvl:'info',tool:'ORCH','msg':'Сброс состояния цели → reset-target.sh'},
+  {t:'04:15:02',lvl:'ok',tool:'ORCH','msg':'Цель поднята. Запуск этапа 1 (HexStrike)'},
+  {t:'04:15:10',lvl:'info',tool:'HEXSTRIKE','msg':'nmap -sV -p 1-65535 staging.example.com'},
+  {t:'04:16:44',lvl:'info',tool:'HEXSTRIKE','msg':'Открытые порты: 80, 443, 8080, 5432'},
+  {t:'04:17:05',lvl:'warn',tool:'HEXSTRIKE','msg':'Port 5432 (PostgreSQL) доступен снаружи!'},
+  {t:'04:22:10',lvl:'ok',tool:'HEXSTRIKE','msg':'nuclei: найдено 3 шаблона с совпадениями'},
+  {t:'04:22:15',lvl:'info',tool:'ORCH','msg':'Этап 1 завершён. Запуск этапа 2 (Strix)'},
+  {t:'04:22:18',lvl:'info',tool:'STRIX','msg':'Инициализация мультиагентного сканирования...'},
+  {t:'04:24:30',lvl:'info',tool:'STRIX','msg':'Agent[XSS]: тестирую /search?q= → 47 пейлоадов'},
+  {t:'04:26:11',lvl:'ok',tool:'STRIX','msg':'[PoC] XSS Reflected в /search?q=<script>alert(1)</script>'},
+  {t:'04:28:55',lvl:'info',tool:'STRIX','msg':'Agent[AUTH]: проверка JWT-алгоритмов...'},
+  {t:'04:29:40',lvl:'warn',tool:'STRIX','msg':'JWT none-algorithm accepted — token accepted without signature'},
+  {t:'04:35:00',lvl:'ok',tool:'STRIX','msg':'Этап 2 завершён. 3 подтверждённых, 2 неподтверждённых'},
+];
+
+// ── NAVIGATION ──
+let currentSection = 'dashboard';
+function nav(s) {
+  document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+  document.getElementById('s-'+s).classList.add('active');
+  document.querySelector(`[data-section="${s}"]`).classList.add('active');
+  currentSection = s;
+  const titles = {dashboard:'Дашборд',newscan:'Новый скан',tasks:'Задачи',scheduler:'Планировщик',findings:'Находки',reports:'Отчёты',livelog:'Живой лог',tools:'Инструменты',settings:'Настройки'};
+  document.getElementById('topbar-title').textContent = titles[s]||s;
+  if(s==='livelog' && !logRunning) startLog();
+}
+document.querySelectorAll('.nav-item').forEach(el=>{
+  el.addEventListener('click',()=>nav(el.dataset.section));
+});
+
+// ── CLOCK ──
+setInterval(()=>{
+  const n=new Date();
+  document.getElementById('clock').textContent=n.toLocaleTimeString('ru',{hour12:false});
+},1000);
+
+// ── CHARTS ──
+function initCharts() {
+  const days=[]; const d=new Date();
+  for(let i=13;i>=0;i--){const x=new Date(d);x.setDate(d.getDate()-i);days.push(x.toLocaleDateString('ru',{day:'2-digit',month:'2-digit'}));}
+
+  const ctx1=document.getElementById('trendChart').getContext('2d');
+  new Chart(ctx1,{type:'line',data:{labels:days,datasets:[
+    {label:'critical',data:[0,0,0,1,0,0,0,0,0,0,0,0,0,1],borderColor:'#ef4444',backgroundColor:'rgba(239,68,68,.08)',tension:.4,fill:true,pointRadius:2},
+    {label:'high',data:[0,0,1,0,0,2,0,0,0,1,0,0,0,2],borderColor:'#f59e0b',backgroundColor:'rgba(245,158,11,.06)',tension:.4,fill:true,pointRadius:2},
+    {label:'medium',data:[1,0,0,2,1,0,3,0,0,1,2,0,1,4],borderColor:'#4f8ef7',backgroundColor:'rgba(79,142,247,.06)',tension:.4,fill:true,pointRadius:2},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#5a6680',font:{size:10},boxWidth:10}}},scales:{x:{ticks:{color:'#3d4a65',font:{size:9}},grid:{color:'rgba(37,45,66,.4)'}},y:{ticks:{color:'#3d4a65',font:{size:9}},grid:{color:'rgba(37,45,66,.4)'},beginAtZero:true}}}});
+
+  const ctx2=document.getElementById('toolChart').getContext('2d');
+  new Chart(ctx2,{type:'doughnut',data:{labels:['DeepAudit','HexStrike','Strix','Shannon'],datasets:[{data:[4,5,8,3],backgroundColor:['#a78bfa','#22d3ee','#f59e0b','#22c55e'],borderColor:'#111520',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#5a6680',font:{size:10},boxWidth:8,padding:8}}},cutout:'60%'}});
+}
+
+// ── ACTIVE RUNS TABLE ──
+function renderActiveRuns() {
+  const active=RUNS.filter(r=>r.status==='running');
+  const tbody=document.getElementById('active-runs-body');
+  if(!active.length){tbody.innerHTML='<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">Нет активных задач</td></tr>';return;}
+  tbody.innerHTML=active.map(r=>`
+    <tr>
+      <td class="mono" style="color:var(--muted)">#${r.id}</td>
+      <td class="mono" style="color:var(--blue)">${r.target}</td>
+      <td>${r.tools.map(t=>`<span class="tool-chip">${t}</span>`).join('')}</td>
+      <td><div class="progress-bar"><div class="progress-fill" style="width:${r.progress}%"></div></div><span class="mono" style="font-size:10px;color:var(--muted);margin-left:6px">${r.progress}%</span></td>
+      <td><span class="tag tag-running"><span class="pulse-dot" style="width:5px;height:5px;margin-right:3px"></span>running</span></td>
+      <td class="mono" style="color:var(--muted);font-size:11px">${r.started}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="nav('livelog')">Лог</button> <button class="btn btn-danger btn-sm">■ Стоп</button></td>
+    </tr>`).join('');
+}
+
+// ── TASKS TABLE ──
+let taskFilter='all';
+function filterTasks(el,f){taskFilter=f;document.querySelectorAll('.filter-chip').forEach(x=>x.classList.remove('active'));el.classList.add('active');renderTasks();}
+function renderTasks(){
+  const runs=taskFilter==='all'?RUNS:RUNS.filter(r=>r.status===taskFilter);
+  document.getElementById('tasks-body').innerHTML=runs.map(r=>`
+    <tr style="cursor:pointer" onclick="showTaskDetail(${r.id})">
+      <td class="mono" style="color:var(--muted)">#${r.id}</td>
+      <td class="mono" style="color:var(--blue)">${r.target}</td>
+      <td>${r.tools.map(t=>`<span class="tool-chip">${t}</span>`).join('')}</td>
+      <td><span class="tag tag-${r.status}">${r.status==='running'?'<span class="pulse-dot" style="width:5px;height:5px;margin-right:3px"></span>':''} ${r.status}</span></td>
+      <td><div class="progress-bar" style="min-width:100px"><div class="progress-fill ${r.status}" style="width:${r.progress}%"></div></div></td>
+      <td class="mono" style="color:${r.findings>0?'var(--red)':'var(--muted)'}">${r.findings}</td>
+      <td class="mono" style="color:var(--muted);font-size:11px">${r.started}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();nav('livelog')">Лог</button></td>
+    </tr>`).join('');
+}
+
+function showTaskDetail(id){
+  const r=RUNS.find(x=>x.id===id); if(!r)return;
+  const d=document.getElementById('task-detail'); d.style.display='block';
+  document.getElementById('task-detail-title').textContent=`Задача #${r.id} — ${r.target}`;
+  const steps=['DeepAudit','HexStrike','Strix','Shannon'];
+  document.getElementById('task-stepper').innerHTML=steps.map((s,i)=>{
+    const cls=i<r.stage?'done':i===r.stage&&r.status==='running'?'active':r.status==='failed'&&i===r.stage?'failed':'';
+    const line=i<steps.length-1?`<div class="step-line ${i<r.stage?'done':''}"></div>`:'';
+    return `<div class="step ${cls}"><div class="step-circle">${i<r.stage?'✓':i+1}</div><div class="step-label">${s}</div></div>${line}`;
+  }).join('');
+  const rf=FINDINGS.filter(f=>f.run===id);
+  document.getElementById('task-findings').innerHTML=rf.length?rf.map(f=>`
+    <tr><td><span class="tag tag-${f.sev}">${f.sev}</span></td><td class="mono" style="font-size:11px">${f.type}</td><td class="mono" style="font-size:11px;color:var(--muted)">${f.endpoint}</td><td>${f.tools.map(t=>`<span class="tool-chip">${t}</span>`).join('')}</td></tr>`).join('')
+    :'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:14px">Находок нет</td></tr>';
+}
+
+// ── SCHEDULER ──
+function renderScheduler(){
+  document.getElementById('sched-body').innerHTML=SCHEDULES.map(s=>`
+    <tr>
+      <td class="mono" style="color:var(--muted)">#${s.id}</td>
+      <td class="mono" style="color:var(--blue)">${s.target}</td>
+      <td>${s.tools.map(t=>`<span class="tool-chip">${t}</span>`).join('')}</td>
+      <td class="mono" style="font-size:11px">${s.cron}</td>
+      <td class="mono" style="font-size:11px;color:var(--muted)">${s.next}</td>
+      <td><span class="tag ${s.active?'tag-done':'tag-pending'}">${s.active?'активно':'пауза'}</span></td>
+      <td><button class="btn btn-ghost btn-sm">Изм.</button> <button class="btn btn-danger btn-sm">✕</button></td>
+    </tr>`).join('');
+}
+
+// ── FINDINGS ──
+let findFilter='all';
+function filterFind(el,f){findFilter=f;document.querySelectorAll('#s-findings .filter-chip').forEach(x=>x.classList.remove('active'));el.classList.add('active');renderFindings();}
+function renderFindings(){
+  const ff=findFilter==='all'?FINDINGS:FINDINGS.filter(f=>f.sev===findFilter);
+  document.getElementById('findings-body').innerHTML=ff.map(f=>`
+    <tr>
+      <td><span class="tag tag-${f.sev}">${f.sev}</span></td>
+      <td class="mono" style="font-size:11px">${f.type}</td>
+      <td class="mono" style="font-size:11px;color:var(--blue)">${f.endpoint}</td>
+      <td class="mono" style="font-size:11px;color:var(--muted)">${f.param}</td>
+      <td>${f.tools.map(t=>`<span class="tool-chip">${t}</span>`).join('')}</td>
+      <td>${f.poc?'<span style="color:var(--green);font-size:13px">✓</span>':'<span style="color:var(--muted2)">—</span>'}</td>
+      <td class="mono" style="color:var(--muted)">#${f.run}</td>
+    </tr>`).join('');
+}
+function exportFindings(){toast('Экспорт SARIF 2.1.0 готов','ok');}
+
+// ── REPORTS ──
+function renderReports(){
+  document.getElementById('reports-body').innerHTML=REPORTS.map(r=>`
+    <tr>
+      <td class="mono" style="font-size:11px">${r.run}</td>
+      <td><span class="tag tag-info">${r.fmt}</span></td>
+      <td class="mono" style="color:var(--muted);font-size:11px">${r.date}</td>
+      <td class="mono" style="color:var(--muted);font-size:11px">${r.size}</td>
+      <td><button class="btn btn-ghost btn-sm">⬇ Скачать</button></td>
+    </tr>`).join('');
+}
+
+// ── TOOLS STATUS ──
+function renderTools(){
+  document.getElementById('tools-grid').innerHTML=TOOLS_STATUS.map(t=>`
+    <div class="tool-card">
+      <div class="tool-header">
+        <div class="tool-name">${t.name}</div>
+        <div class="tool-status"><span class="st-dot st-${t.status}"></span><span style="color:var(--muted)">${t.status==='online'?'онлайн':t.status==='warn'?'предупреждение':'офлайн'}</span></div>
+      </div>
+      <div class="tool-meta">
+        <div class="meta-item"><div class="meta-key">Версия</div><div class="meta-val">${t.version}</div></div>
+        <div class="meta-item"><div class="meta-key">Последний запуск</div><div class="meta-val">${t.last}</div></div>
+        <div class="meta-item"><div class="meta-key">Среднее время</div><div class="meta-val">${t.avg}</div></div>
+        <div class="meta-item"><div class="meta-key">Docker-образ</div><div class="meta-val" style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.image}</div></div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick="checkTool('${t.name}')">⟳ Проверить</button>
+        <button class="btn btn-ghost btn-sm">↺ Рестарт</button>
+        <button class="btn btn-ghost btn-sm">⚙ Настроить</button>
+      </div>
+    </div>`).join('');
+}
+function checkTool(name){toast(`${name}: соединение проверено — OK`,'ok');}
+
+// ── LIVE LOG ──
+let logLines=[...LOG_LINES];
+let logPaused=false, logRunning=false, logTimer=null;
+function startLog(){
+  logRunning=true;
+  const term=document.getElementById('terminal');
+  term.innerHTML='';
+  logLines.forEach(l=>appendLogLine(l));
+  logTimer=setInterval(()=>{
+    if(logPaused)return;
+    const extras=[
+      {t:ts(),lvl:'info',tool:'STRIX',msg:'Agent[SSRF]: тестирую endpoint /api/fetch...'},
+      {t:ts(),lvl:'info',tool:'STRIX',msg:'Генерация пейлоадов через LLM...'},
+      {t:ts(),lvl:'warn',tool:'STRIX',msg:'Timeout на /api/fetch?url=http://169.254.169.254/'},
+      {t:ts(),lvl:'ok',tool:'STRIX',msg:'[PoC] SSRF подтверждён → AWS metadata доступен'},
+      {t:ts(),lvl:'info',tool:'ORCH',msg:'Этап 2 (Strix) завершён. Запуск этапа 3 (Shannon)...'},
+      {t:ts(),lvl:'info',tool:'SHANNON',msg:'Загрузка исходного кода для code-aware анализа...'},
+      {t:ts(),lvl:'info',tool:'SHANNON',msg:'Анализирую data flow в src/api/fetch.py...'},
+    ];
+    const line=extras[Math.floor(Math.random()*extras.length)];
+    appendLogLine(line);
+    updateLogCounter();
+  },2800);
+}
+function ts(){const n=new Date();return n.toTimeString().slice(0,8);}
+function appendLogLine(l){
+  const term=document.getElementById('terminal');
+  const div=document.createElement('div');
+  div.className=`log-line log-${l.lvl}`;
+  div.dataset.msg=l.msg.toLowerCase();
+  div.innerHTML=`<span class="log-time">${l.t}</span><span class="log-tool">${l.tool}</span><span class="log-msg">${l.msg}</span>`;
+  term.appendChild(div);
+  if(!logPaused)term.scrollTop=term.scrollHeight;
+  updateLogCounter();
+}
+function toggleLogPause(){logPaused=!logPaused;document.getElementById('btn-pause-log').textContent=logPaused?'▶ Продолжить':'⏸ Пауза';}
+function clearLog(){document.getElementById('terminal').innerHTML='';updateLogCounter();}
+function downloadLog(){
+  const lines=[...document.querySelectorAll('.log-line')].map(l=>l.textContent).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([lines],{type:'text/plain'}));a.download='run-7.log';a.click();
+}
+function searchLog(q){
+  document.querySelectorAll('.log-line').forEach(l=>{
+    l.style.display=q&&!l.dataset.msg.includes(q.toLowerCase())?'none':'';
+  });
+}
+function updateLogCounter(){document.getElementById('log-counter').textContent=document.querySelectorAll('.log-line').length+' строк';}
+
+// ── NEW SCAN ──
+function loadTargetFile(input){
+  const f=input.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    const urls=e.target.result.split('\n').map(x=>x.trim()).filter(Boolean);
+    document.getElementById('targets-input').value=urls.join('\n');
+    updateTargetsPreview();
+    toast(`Загружено ${urls.length} целей из файла`,'ok');
+  };
+  r.readAsText(f);
+}
+function updateTargetsPreview(){
+  const urls=document.getElementById('targets-input').value.split('\n').filter(Boolean);
+  const pre=document.getElementById('targets-preview');
+  if(!urls.length){pre.innerHTML='';return;}
+  pre.innerHTML='<div style="font-size:11px;color:var(--muted);margin-bottom:6px">'+urls.length+' целей:</div>'+
+    urls.map(u=>`<div style="font-family:var(--mono);font-size:11px;padding:3px 0;color:${u.startsWith('http')?'var(--blue)':'var(--red)'}">
+      ${u.startsWith('http')?'✓':'✗'} ${u}</div>`).join('');
+}
+document.getElementById('targets-input').addEventListener('input',updateTargetsPreview);
+
+function startScan(){
+  const url=document.getElementById('targets-input').value.trim();
+  if(!url){toast('Укажите URL цели','warn');return;}
+  toast('Прогон запущен! Переход в Задачи...','ok');
+  setTimeout(()=>nav('tasks'),1200);
+}
+
+// ── FILE DROP ──
+const fd=document.getElementById('file-drop');
+fd.addEventListener('dragover',e=>{e.preventDefault();fd.classList.add('over');});
+fd.addEventListener('dragleave',()=>fd.classList.remove('over'));
+fd.addEventListener('drop',e=>{e.preventDefault();fd.classList.remove('over');const f=e.dataTransfer.files[0];if(f){const fi=document.getElementById('file-input');const dt=new DataTransfer();dt.items.add(f);fi.files=dt.files;loadTargetFile(fi);}});
+
+// ── TABS ──
+function openTab(btn,id){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+
+// ── SETTINGS: LLM providers ──
+const llmProviders=[{name:'OpenRouter',type:'OpenRouter',endpoint:'https://openrouter.ai/api/v1',key:'sk-or-***'},
+  {name:'Ollama Local',type:'Ollama',endpoint:'http://localhost:11434',key:'—'}];
+function renderLLMProviders(){
+  document.getElementById('llm-providers-list').innerHTML=llmProviders.map((p,i)=>`
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:12.5px;font-weight:500">${p.name}</div><div style="font-size:11px;color:var(--muted);font-family:var(--mono)">${p.endpoint}</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick="testLLM(${i})">Тест</button>
+        <button class="btn btn-danger btn-sm">✕</button>
+      </div>
+    </div>`).join('');
+}
+function addLLMProvider(){toast('Форма добавления провайдера откроется здесь','ok');}
+function testLLM(i){toast(`${llmProviders[i].name}: соединение OK, модели загружены`,'ok');}
+renderLLMProviders();
+
+// ── MODAL ──
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.querySelectorAll('.modal-overlay').forEach(m=>{
+  m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');});
+});
+
+// ── TOAST ──
+function toast(msg,type='ok'){
+  const c=document.getElementById('toast-container');
+  const d=document.createElement('div');
+  d.className=`toast toast-${type==='ok'?'ok':'crit'}`;
+  d.textContent=msg;
+  c.appendChild(d);
+  setTimeout(()=>{d.style.opacity='0';d.style.transition='opacity .3s';setTimeout(()=>d.remove(),300);},3500);
+}
+
+// ── TOGGLE API KEY ──
+function toggleKey(){const i=document.getElementById('api-key');i.type=i.type==='password'?'text':'password';}
+
+// ── KEYBOARD SHORTCUTS ──
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  if(e.key==='n'||e.key==='N')nav('newscan');
+  if(e.key==='l'||e.key==='L')nav('livelog');
+  if(e.key==='Escape')document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
+});
+
+// ── REAL-TIME SIMULATION ──
+setInterval(()=>{
+  // имитация роста прогресса активного прогона
+  const run=RUNS.find(r=>r.status==='running');
+  if(run&&run.progress<98){
+    run.progress=Math.min(98,run.progress+Math.random()*1.5);
+    renderActiveRuns();
+  }
+  // обновление бейджей
+  document.getElementById('badge-findings').textContent=FINDINGS.length;
+  document.getElementById('badge-tasks').textContent=RUNS.filter(r=>r.status==='running').length;
+},4000);
+
+// Случайный critical-тост для демо реал-тайм уведомлений
+setTimeout(()=>toast('🔴 Critical: SQLi подтверждён на /api/users','crit'),5000);
+setTimeout(()=>toast('✓ HexStrike: этап 1 завершён, 5 находок','ok'),12000);
+
+// ── INIT ──
+initCharts();
+renderActiveRuns();
+renderTasks();
+renderScheduler();
+renderFindings();
+renderReports();
+renderTools();
+
+// ══════════════════════════════════════════
+// РЕАЛЬНЫЙ API-СЛОЙ (заменяет статические данные)
+// Подключается к FastAPI на том же хосте:9000
+// ══════════════════════════════════════════
+const API = window.location.origin;  // http://127.0.0.1:9000
+
+async function apiFetch(path, opts={}) {
+  try {
+    const r = await fetch(API + path, {
+      headers: {'Content-Type':'application/json'},
+      ...opts,
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch(e) {
+    console.warn('[API]', path, e.message);
+    return null;
+  }
+}
+
+// ── WebSocket: статусы прогонов (обновление дашборда без перезагрузки) ──
+function connectRunsWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/runs`);
+  ws.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'runs_status') {
+      d.runs.forEach(r => {
+        // обновляем прогресс-бары в таблице активных задач без перерендера
+        const pb = document.querySelector(`[data-run-progress="${r.id}"]`);
+        if (pb) pb.style.width = r.progress + '%';
+      });
+      // обновляем счётчики
+      const active = d.runs.filter(r=>r.status==='running').length;
+      const el = document.getElementById('st-active');
+      if (el) el.textContent = active;
+    }
+  };
+  ws.onclose = () => setTimeout(connectRunsWS, 3000);
+}
+
+// ── WebSocket: лог (реальный поток из pipeline.py → ws_manager) ──
+let logWS = null;
+function connectLogsWS(run_id) {
+  if (logWS) logWS.close();
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  logWS = new WebSocket(`${proto}://${location.host}/ws/logs/${run_id}`);
+  logWS.onmessage = e => {
+    const line = JSON.parse(e.data);
+    if (!logPaused) appendLogLine(line);
+  };
+  logWS.onclose = () => {
+    // если прогон всё ещё активен — переподключаемся
+    setTimeout(() => { if (currentSection === 'livelog') connectLogsWS(run_id); }, 2000);
+  };
+}
+
+// ── Подгрузка реальных данных при переходе в раздел ──
+const _origNav = nav;
+async function nav(s) {
+  _origNav(s);
+  // при переходе — подгружаем реальные данные если API доступен
+  if (s === 'dashboard') await loadDashboardReal();
+  if (s === 'tasks')     await loadTasksReal();
+  if (s === 'findings')  await loadFindingsReal();
+  if (s === 'scheduler') await loadSchedulerReal();
+  if (s === 'reports')   await loadReportsReal();
+  if (s === 'tools')     await loadToolsReal();
+  if (s === 'settings')  await loadSettingsReal();
+  if (s === 'livelog') {
+    const sel = document.getElementById('log-run-select');
+    const run_id = sel ? parseInt(sel.value) : 0;
+    if (run_id) connectLogsWS(run_id);
+  }
+}
+
+async function loadDashboardReal() {
+  const stats = await apiFetch('/api/stats');
+  if (!stats) return;
+  document.getElementById('st-total').textContent  = stats.total;
+  document.getElementById('st-active').textContent = stats.active;
+  document.getElementById('st-paused').textContent = stats.paused;
+  document.getElementById('st-done').textContent   = stats.done;
+  document.getElementById('st-findings').textContent = stats.findings;
+  document.getElementById('st-hi').textContent     = stats.hi_findings;
+  if (stats.severity) {
+    document.getElementById('cnt-crit').textContent = stats.severity.critical || 0;
+    document.getElementById('cnt-high').textContent = stats.severity.high || 0;
+    document.getElementById('cnt-med').textContent  = stats.severity.medium || 0;
+    document.getElementById('cnt-low').textContent  = stats.severity.low || 0;
+    document.getElementById('cnt-info').textContent = stats.severity.info || 0;
+  }
+  const runs = await apiFetch('/api/runs?status=running');
+  if (runs) {
+    window.RUNS = runs;
+    renderActiveRuns();
+  }
+}
+
+async function loadTasksReal() {
+  const runs = await apiFetch('/api/runs');
+  if (runs) { window.RUNS = runs; renderTasks(); }
+}
+
+async function loadFindingsReal() {
+  const findings = await apiFetch('/api/findings');
+  if (findings) { window.FINDINGS = findings; renderFindings(); }
+}
+
+async function loadSchedulerReal() {
+  const scheds = await apiFetch('/api/schedule');
+  if (scheds) { window.SCHEDULES = scheds; renderScheduler(); }
+}
+
+async function loadReportsReal() { /* reports из БД — расширите позже */ }
+
+async function loadToolsReal() {
+  const tools = await apiFetch('/api/tools/status');
+  if (!tools) return;
+  // мерджим со статическими данными (версии, время) — реальные версии
+  // добавите через /api/tools/{name}/check
+  window.TOOLS_STATUS = TOOLS_STATUS.map(t => {
+    const live = tools.find(x => x.name.toLowerCase() === t.name.toLowerCase());
+    return live ? {...t, status: live.status} : t;
+  });
+  renderTools();
+}
+
+async function loadSettingsReal() {
+  const s = await apiFetch('/api/settings');
+  if (!s) return;
+  if (s.instance_name) {
+    const el = document.querySelector('[name="instance_name"], input[value="StrikeNet Production"]');
+    if (el) el.value = s.instance_name;
+  }
+}
+
+// Переопределяем startScan — теперь шлём реальный POST /api/runs
+async function startScan() {
+  const url = document.getElementById('targets-input').value.trim();
+  if (!url) { toast('Укажите URL цели', 'crit'); return; }
+  const urls = url.split('\n').map(u=>u.trim()).filter(u=>u.startsWith('http'));
+  if (!urls.length) { toast('Нет валидных URL (должны начинаться с http)', 'crit'); return; }
+
+  const tools = [];
+  if (document.getElementById('t-deepaudit').checked) tools.push('deepaudit');
+  if (document.getElementById('t-hexstrike').checked) tools.push('hexstrike');
+  if (document.getElementById('t-strix').checked)     tools.push('strix');
+  if (document.getElementById('t-shannon').checked)   tools.push('shannon');
+
+  const body = {
+    target_url: urls[0],
+    target_repo: document.getElementById('repo-path').value.trim() || null,
+    tools,
+    llm_provider: document.getElementById('llm-provider').value.toLowerCase(),
+    nono_enabled: true,
+    reset_between_stages: true,
+  };
+
+  const result = await apiFetch('/api/runs', {method:'POST', body: JSON.stringify(body)});
+  if (result && result.run_id) {
+    toast(`✓ Прогон #${result.run_id} запущен`, 'ok');
+    setTimeout(() => nav('tasks'), 800);
+  } else {
+    toast('Ошибка запуска — проверьте консоль', 'crit');
+  }
+}
+
+// Переопределяем checkTool — реальная проверка
+async function checkTool(name) {
+  toast(`Проверяю ${name}...`, 'ok');
+  const r = await apiFetch(`/api/tools/${name.toLowerCase()}/check`, {method:'POST'});
+  if (r) toast(`${name}: ${r.status === 'online' ? '✓ онлайн' : '✗ офлайн'}`, r.status === 'online' ? 'ok' : 'crit');
+}
+
+// Смена run в live log → переподключаем WS
+document.getElementById('log-run-select')?.addEventListener('change', function() {
+  connectLogsWS(parseInt(this.value));
+  clearLog();
+});
+
+// Запускаем WebSocket прогонов сразу
+connectRunsWS();
+
+// Первая загрузка дашборда с реальными данными
+loadDashboardReal();
+
+</script>
+</body>
+</html>

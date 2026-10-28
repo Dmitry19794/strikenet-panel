@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+orchestrator.db
+auth.json
+logs/
+results/
+nono_profiles/
+*.log
+.DS_Store

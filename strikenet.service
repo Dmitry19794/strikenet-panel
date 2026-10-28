@@ -1,0 +1,22 @@
+[Unit]
+Description=StrikeNet Pentest Orchestrator
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=hexstrike-svc
+WorkingDirectory=/opt/pentest-orchestrator
+ExecStart=/opt/pentest-orchestrator/venv/bin/uvicorn app.main:app \
+  --host 127.0.0.1 \
+  --port 9000 \
+  --workers 1
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/opt/pentest-orchestrator/logs/server.log
+StandardError=append:/opt/pentest-orchestrator/logs/server.log
+Environment=PYTHONUNBUFFERED=1
+Environment=NONO_ENABLED=1
+
+[Install]
+WantedBy=multi-user.target
