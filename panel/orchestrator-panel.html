@@ -692,7 +692,7 @@ const LOG_LINES = [
   {t:'04:22:15',lvl:'info',tool:'ORCH','msg':'Этап 1 завершён. Запуск этапа 2 (Strix)'},
   {t:'04:22:18',lvl:'info',tool:'STRIX','msg':'Инициализация мультиагентного сканирования...'},
   {t:'04:24:30',lvl:'info',tool:'STRIX','msg':'Agent[XSS]: тестирую /search?q= → 47 пейлоадов'},
-  {t:'04:26:11',lvl:'ok',tool:'STRIX','msg':'[PoC] XSS Reflected в /search?q=<script>alert(1)</script>'},
+  {t:'04:26:11',lvl:'ok',tool:'STRIX','msg':'[PoC] XSS Reflected в /search?q=<script>alert(1)<\/script>'},
   {t:'04:28:55',lvl:'info',tool:'STRIX','msg':'Agent[AUTH]: проверка JWT-алгоритмов...'},
   {t:'04:29:40',lvl:'warn',tool:'STRIX','msg':'JWT none-algorithm accepted — token accepted without signature'},
   {t:'04:35:00',lvl:'ok',tool:'STRIX','msg':'Этап 2 завершён. 3 подтверждённых, 2 неподтверждённых'},
@@ -700,7 +700,7 @@ const LOG_LINES = [
 
 // ── NAVIGATION ──
 let currentSection = 'dashboard';
-function nav(s) {
+function navBase(s) {
   document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
   document.getElementById('s-'+s).classList.add('active');
@@ -1074,7 +1074,7 @@ function connectLogsWS(run_id) {
 }
 
 // ── Подгрузка реальных данных при переходе в раздел ──
-const _origNav = nav;
+const _origNav = navBase;
 async function nav(s) {
   _origNav(s);
   // при переходе — подгружаем реальные данные если API доступен
