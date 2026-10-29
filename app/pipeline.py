@@ -7,6 +7,7 @@ Pipeline движок.
 import asyncio
 import datetime
 import os
+import signal
 from pathlib import Path
 
 from . import db
@@ -27,6 +28,52 @@ NEEDS_RESET = {"strix": True, "shannon": True}
 
 # ── нужен ли target_repo для инструмента ──
 NEEDS_REPO = {"deepaudit", "shannon"}
+
+# ── реестр активных дочерних процессов и причин отмены ──
+_active_procs: dict[int, "asyncio.subprocess.Process"] = {}
+_cancel_reasons: dict[int, str] = {}
+
+
+def set_cancel_reason(run_id: int, reason: str):
+    """Запоминает, чем отменяется прогон: 'pause' или 'stop'."""
+    _cancel_reasons[run_id] = reason
+
+
+async def kill_run_procs(run_id: int):
+    """Гасит ВСЁ дерево дочерних процессов прогона, а не только прямого потомка.
+
+    Инструменты (npx → node, docker, nono-обёртка) плодят внуков. Запуск идёт
+    в отдельной сессии (start_new_session=True в _run_cmd), поэтому убиваем
+    всю группу процессов: SIGTERM группе, через 5с — SIGKILL.
+    """
+    proc = _active_procs.pop(run_id, None)
+    if not proc or proc.returncode is not None:
+        return
+
+    try:
+        pgid = os.getpgid(proc.pid)   # == proc.pid, т.к. сессия своя
+    except (ProcessLookupError, PermissionError):
+        pgid = None
+
+    def _signal_group(sig):
+        if pgid is not None:
+            try:
+                os.killpg(pgid, sig)
+                return
+            except (ProcessLookupError, PermissionError):
+                pass
+        try:
+            proc.send_signal(sig)   # фолбэк: только прямой потомок
+        except ProcessLookupError:
+            pass
+
+    _signal_group(signal.SIGTERM)
+
+    async def _escalate():
+        await asyncio.sleep(5)
+        _signal_group(signal.SIGKILL)
+
+    asyncio.ensure_future(_escalate())
 
 
 def _now() -> str:
@@ -115,8 +162,19 @@ async def _run_cmd(cmd: list[str], run_id: int, tool: str,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,   # None → наследует os.environ полностью
+            start_new_session=True,  # своя группа процессов — чтобы kill убивал дерево
         )
-        stdout, stderr = await proc.communicate()
+        _active_procs[run_id] = proc
+        try:
+            stdout, stderr = await proc.communicate()
+        except asyncio.CancelledError:
+            # таск отменён (pause/stop) — убиваем дочерний процесс,
+            # иначе nmap/strix/docker продолжали бы работать в системе
+            await kill_run_procs(run_id)
+            raise
+        finally:
+            if _active_procs.get(run_id) is proc:
+                _active_procs.pop(run_id, None)
 
         # если инструмент пишет в stdout (например HexStrike через curl)
         if out_file and stdout:
@@ -151,8 +209,13 @@ async def _reset_target(run_id: int):
 
 async def run_pipeline(run_id: int, target_url: str, target_repo: str,
                        tools: list[str], nono_enabled: bool,
-                       reset_between: bool, llm_provider: str | None):
-    """Главная функция пайплайна — вызывается как asyncio.create_task()."""
+                       reset_between: bool, llm_provider: str | None,
+                       start_stage: int = 0):
+    """Главная функция пайплайна — вызывается как asyncio.create_task().
+
+    start_stage — индекс этапа, с которого начинать (для resume);
+    этапы с idx < start_stage уже выполнены и пропускаются.
+    """
     db.update_run(run_id, status="running", started_at=_now(), progress=0)
 
     results_dir = str(RESULTS_ROOT / str(run_id))
@@ -187,7 +250,14 @@ async def run_pipeline(run_id: int, target_url: str, target_repo: str,
     total = len(ordered)
 
     try:
+        if start_stage:
+            await _log(run_id, "info", "ORCH",
+                       f"Возобновление с этапа {start_stage+1}/{total}")
         for idx, tool in enumerate(ordered):
+            # при resume этапы до start_stage уже выполнены — пропускаем
+            if idx < start_stage:
+                continue
+
             # пропускаем DeepAudit если нет репозитория
             if tool in NEEDS_REPO and not target_repo:
                 await _log(run_id, "info", "ORCH",
@@ -280,8 +350,16 @@ async def run_pipeline(run_id: int, target_url: str, target_repo: str,
         })
 
     except asyncio.CancelledError:
-        db.update_run(run_id, status="paused", finished_at=_now())
-        await _log(run_id, "info", "ORCH", f"Прогон #{run_id} приостановлен")
+        # разбираем причину: stop → stopped, иначе → paused (можно resume)
+        reason = _cancel_reasons.pop(run_id, "pause")
+        status = "stopped" if reason == "stop" else "paused"
+        db.update_run(run_id, status=status, finished_at=_now())
+        msg = "остановлен" if status == "stopped" else "приостановлен"
+        try:
+            await _log(run_id, "warn" if status == "stopped" else "info",
+                       "ORCH", f"Прогон #{run_id} {msg}")
+        except asyncio.CancelledError:
+            pass
     except Exception as e:
         db.update_run(run_id, status="failed", finished_at=_now())
         await _log(run_id, "error", "ORCH", f"Неожиданная ошибка: {e}")

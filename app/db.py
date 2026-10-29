@@ -219,6 +219,15 @@ def get_stages(run_id: int) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def delete_incomplete_stages(run_id: int):
+    """Удаляет этапы прогона, не дошедшие до done/skipped (нужно для resume)."""
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM stages WHERE run_id = ? AND status NOT IN ('done','skipped')",
+            (run_id,),
+        )
+
+
 # ── FINDINGS ──
 def add_finding(run_id: int, stage_id: int, tool: str, finding: dict):
     dedup = f"{finding.get('vuln_type','')}|{finding.get('endpoint','')}|{finding.get('parameter','')}".lower()

@@ -137,6 +137,7 @@ tr:hover td { background: rgba(25,30,45,.6); }
 .tag-pending { background: rgba(90,102,128,.15); color: var(--muted); }
 .tag-failed { background: rgba(239,68,68,.15); color: var(--red); }
 .tag-paused { background: rgba(245,158,11,.15); color: var(--amber); }
+.tag-stopped { background: rgba(148,163,184,.15); color: #94a3b8; }
 
 .tool-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-family: var(--mono); background: var(--s3); color: var(--muted); margin: 1px; }
 
@@ -749,13 +750,19 @@ function renderActiveRuns() {
       <td><div class="progress-bar"><div class="progress-fill" style="width:${r.progress}%"></div></div><span class="mono" style="font-size:10px;color:var(--muted);margin-left:6px">${r.progress}%</span></td>
       <td><span class="tag tag-running"><span class="pulse-dot" style="width:5px;height:5px;margin-right:3px"></span>running</span></td>
       <td class="mono" style="color:var(--muted);font-size:11px">${r.started}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="nav('livelog')">Лог</button> <button class="btn btn-danger btn-sm">■ Стоп</button></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();nav('livelog')">Лог</button> <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();controlRun(${r.id},'pause')">⏸ Пауза</button> <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();controlRun(${r.id},'stop')">■ Стоп</button></td>
     </tr>`).join('');
 }
 
 // ── TASKS TABLE ──
 let taskFilter='all';
 function filterTasks(el,f){taskFilter=f;document.querySelectorAll('.filter-chip').forEach(x=>x.classList.remove('active'));el.classList.add('active');renderTasks();}
+function taskActions(r){
+  const log=`<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();nav('livelog')">Лог</button>`;
+  if(r.status==='running') return log+` <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();controlRun(${r.id},'pause')">⏸ Пауза</button> <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();controlRun(${r.id},'stop')">■ Стоп</button>`;
+  if(r.status==='paused') return log+` <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();controlRun(${r.id},'resume')">▶ Продолжить</button> <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();controlRun(${r.id},'stop')">■ Стоп</button>`;
+  return log;
+}
 function renderTasks(){
   const runs=taskFilter==='all'?RUNS:RUNS.filter(r=>r.status===taskFilter);
   document.getElementById('tasks-body').innerHTML=runs.map(r=>`
@@ -767,7 +774,7 @@ function renderTasks(){
       <td><div class="progress-bar" style="min-width:100px"><div class="progress-fill ${r.status}" style="width:${r.progress}%"></div></div></td>
       <td class="mono" style="color:${r.findings>0?'var(--red)':'var(--muted)'}">${r.findings}</td>
       <td class="mono" style="color:var(--muted);font-size:11px">${r.started}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();nav('livelog')">Лог</button></td>
+      <td>${taskActions(r)}</td>
     </tr>`).join('');
 }
 
@@ -1036,6 +1043,28 @@ async function apiFetch(path, opts={}) {
   }
 }
 
+// ── Управление прогоном: pause / resume / stop ──
+async function controlRun(id, action) {
+  const r = await apiFetch(`/api/runs/${id}/${action}`, {method:'POST'});
+  if (r) {
+    toast(`Прогон #${id}: ${r.status}`, 'ok');
+    if (currentSection === 'tasks')     await loadTasksReal();
+    if (currentSection === 'dashboard') await loadDashboardReal();
+  } else {
+    toast(`Не удалось выполнить ${action} для #${id}`, 'err');
+  }
+}
+
+// маппинг полей БД (target_url/started_at) → поля фронтенда (target/started)
+function normalizeRun(r){
+  return {
+    ...r,
+    target: r.target || r.target_url || '',
+    started: r.started || (r.started_at ? String(r.started_at).slice(5,16).replace('T',' ') : '—'),
+    findings: r.findings ?? 0,
+  };
+}
+
 // ── WebSocket: статусы прогонов (обновление дашборда без перезагрузки) ──
 function connectRunsWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -1110,14 +1139,14 @@ async function loadDashboardReal() {
   }
   const runs = await apiFetch('/api/runs?status=running');
   if (runs) {
-    window.RUNS = runs;
+    window.RUNS = runs.map(normalizeRun);
     renderActiveRuns();
   }
 }
 
 async function loadTasksReal() {
   const runs = await apiFetch('/api/runs');
-  if (runs) { window.RUNS = runs; renderTasks(); }
+  if (runs) { window.RUNS = runs.map(normalizeRun); renderTasks(); }
 }
 
 async function loadFindingsReal() {

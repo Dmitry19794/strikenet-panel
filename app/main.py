@@ -38,10 +38,11 @@ from fastapi.staticfiles import StaticFiles
 from . import db
 from .models import RunCreate, ScheduleCreate, LLMProviderCreate, SettingsUpdate, LLMTestRequest, LLMActiveConfig
 from .llm_config import get_provider_info, PRESETS, build_env_for_tool
-from .pipeline import run_pipeline
+from .pipeline import run_pipeline, set_cancel_reason, kill_run_procs
 from .reports import generate_sarif, generate_json, generate_csv
 from .scheduler import init_scheduler, register_schedule, unregister_schedule, scheduler
 from .ws_manager import ws_manager
+from .auth import BasicAuthMiddleware, AUTH_FILE
 
 # путь к HTML-панели (лежит рядом с директорией app/)
 PANEL_HTML = Path(__file__).parent.parent / "panel" / "orchestrator-panel.html"
@@ -66,6 +67,11 @@ app = FastAPI(title="StrikeNet Orchestrator", version="0.9.1", lifespan=lifespan
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# HTTP Basic Auth на ВСЁ (панель, REST, WebSocket, /docs) — fail-closed
+app.add_middleware(BasicAuthMiddleware,
+                   credentials_path=AUTH_FILE,
+                   realm="StrikeNet Orchestrator")
 
 
 # ── ФРОНТЕНД ──
@@ -128,7 +134,10 @@ async def get_run(run_id: int):
 async def pause_run(run_id: int):
     task = _pipeline_tasks.get(run_id)
     if task and not task.done():
+        set_cancel_reason(run_id, "pause")
         task.cancel()
+        # подстраховка: дочерний процесс убьёт и пайплайн, но гасим и тут
+        await kill_run_procs(run_id)
         db.update_run(run_id, status="paused")
         return {"status": "paused"}
     raise HTTPException(400, "Run not found or already finished")
@@ -138,9 +147,49 @@ async def pause_run(run_id: int):
 async def stop_run(run_id: int):
     task = _pipeline_tasks.get(run_id)
     if task and not task.done():
+        set_cancel_reason(run_id, "stop")
         task.cancel()
-    db.update_run(run_id, status="failed")
+        await kill_run_procs(run_id)
+    db.update_run(run_id, status="stopped")
     return {"status": "stopped"}
+
+
+@app.post("/api/runs/{run_id}/resume")
+async def resume_run(run_id: int):
+    run = db.get_run(run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    if run["status"] != "paused":
+        raise HTTPException(400, "Run is not paused")
+    task = _pipeline_tasks.get(run_id)
+    if task and not task.done():
+        raise HTTPException(400, "Run already active")
+
+    # первый невыполненный этап: после последнего done/skipped
+    stages = db.get_stages(run_id)
+    done_idxs = [s["order_index"] for s in stages
+                 if s["status"] in ("done", "skipped")]
+    start_stage = (max(done_idxs) + 1) if done_idxs else 0
+
+    # оборванные (pending/running) этапы убираем — пересоздадим заново
+    db.delete_incomplete_stages(run_id)
+
+    db.update_run(run_id, status="running", finished_at=None)
+    task = asyncio.create_task(
+        run_pipeline(
+            run_id=run_id,
+            target_url=run["target_url"],
+            target_repo=run.get("target_repo") or "",
+            tools=run["tools"],
+            nono_enabled=bool(run.get("nono_enabled")),
+            reset_between=bool(run.get("reset_stages")),
+            llm_provider=run.get("llm_provider"),
+            start_stage=start_stage,
+        )
+    )
+    _pipeline_tasks[run_id] = task
+    task.add_done_callback(lambda _: _pipeline_tasks.pop(run_id, None))
+    return {"status": "running", "start_stage": start_stage}
 
 
 @app.get("/api/runs/{run_id}/findings")
