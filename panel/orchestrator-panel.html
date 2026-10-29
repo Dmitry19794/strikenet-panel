@@ -636,7 +636,7 @@ tr:hover td { background: rgba(25,30,45,.6); }
 
 <script>
 // ── DATA ──
-const RUNS = [
+var RUNS = [
   {id:7,target:'staging.example.com',tools:['deepaudit','hexstrike','strix','shannon'],status:'running',progress:55,findings:8,started:'27.10 04:12',stage:2},
   {id:6,target:'api.internal.com',tools:['hexstrike','strix','shannon'],status:'done',progress:100,findings:7,started:'26.10 22:00',stage:3},
   {id:5,target:'admin.example.com',tools:['deepaudit','shannon'],status:'done',progress:100,findings:3,started:'25.10 15:30',stage:3},
@@ -644,7 +644,7 @@ const RUNS = [
   {id:3,target:'legacy.example.com',tools:['deepaudit','hexstrike','strix','shannon'],status:'done',progress:100,findings:0,started:'24.10 08:00',stage:3},
 ];
 
-const FINDINGS = [
+var FINDINGS = [
   {sev:'critical',type:'SQLi Time-Based',endpoint:'/api/users',param:'id',tools:['strix','shannon'],poc:true,run:7},
   {sev:'high',type:'XSS Reflected',endpoint:'/search',param:'q',tools:['hexstrike','strix'],poc:true,run:7},
   {sev:'high',type:'SSRF',endpoint:'/api/fetch',param:'url',tools:['shannon'],poc:true,run:6},
@@ -659,25 +659,25 @@ const FINDINGS = [
   {sev:'info',type:'Directory Listing',endpoint:'/static/',param:'-',tools:['hexstrike'],poc:false,run:6},
 ];
 
-const SCHEDULES = [
+var SCHEDULES = [
   {id:1,target:'staging.example.com',tools:['hexstrike','strix','shannon'],cron:'0 2 * * 1',next:'03.11 02:00',active:true},
   {id:2,target:'api.internal.com',tools:['deepaudit','shannon'],cron:'0 3 1 * *',next:'01.11 03:00',active:true},
 ];
 
-const REPORTS = [
+var REPORTS = [
   {run:'#7 — staging.example.com',fmt:'PDF',date:'27.10 06:00',size:'1.2 МБ'},
   {run:'#6 — api.internal.com',fmt:'SARIF 2.1.0',date:'27.10 00:15',size:'48 КБ'},
   {run:'#5 — admin.example.com',fmt:'JSON',date:'25.10 20:00',size:'22 КБ'},
 ];
 
-const TOOLS_STATUS = [
+var TOOLS_STATUS = [
   {name:'DeepAudit',status:'online',version:'1.4.2',last:'27.10 04:12',avg:'18 мин',image:'deepaudit:latest'},
   {name:'HexStrike',status:'online',version:'6.0.1',last:'27.10 04:20',avg:'8 мин',image:'kalilinux/kali-rolling'},
   {name:'Strix',status:'online',version:'3.1.0',last:'27.10 04:40',avg:'45 мин',image:'strix:isolated'},
   {name:'Shannon',status:'warn',version:'2.8.0',last:'27.10 04:30',avg:'62 мин',image:'node:20-slim'},
 ];
 
-const LOG_LINES = [
+var LOG_LINES = [
   {t:'04:12:01',lvl:'info',tool:'ORCH','msg':'Запуск прогона #7 → staging.example.com'},
   {t:'04:12:03',lvl:'info',tool:'DEEPAUDIT','msg':'Клонирование репозитория /opt/staging-src...'},
   {t:'04:13:45',lvl:'ok',tool:'DEEPAUDIT','msg':'Найдено 3 потенциальных уязвимости в src/api/users.py'},
